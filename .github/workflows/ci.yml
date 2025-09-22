@@ -1,0 +1,57 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Lint with ruff
+      run: |
+        ruff check .
+    
+    - name: Format with black
+      run: |
+        black --check --diff .
+    
+    - name: Run tests
+      run: |
+        pytest -v
+        
+    - name: Test Streamlit app syntax
+      run: |
+        python -m py_compile main.py
+        python -c "import streamlit; print('Streamlit import successful')"
+
+  build:
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build Docker image
+      run: |
+        docker build -t toolshare:latest .
+        
+    - name: Test Docker image
+      run: |
+        docker run --rm toolshare:latest python -c "print('Docker image works!')"
