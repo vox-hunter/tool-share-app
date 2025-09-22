@@ -37,7 +37,7 @@ This project is built for the hackathon theme:
 ```bash
 git clone https://github.com/<your-team>/toolshare.git
 cd toolshare
-```
+```text
 
 ### 2. Setup environment
 
@@ -49,7 +49,7 @@ source .venv/bin/activate   # Linux/Mac
 .venv\Scripts\activate      # Windows
 
 pip install -r requirements.txt
-```
+```python
 
 If using **GitHub Codespaces**, everything is preconfigured via `.devcontainer/`.
 
@@ -60,9 +60,8 @@ If using **GitHub Codespaces**, everything is preconfigured via `.devcontainer/`
 3. Add them to a `.streamlit/secrets.toml` file:
 
    ```toml
-   [supabase]
-   url = "https://your-project.supabase.co"
-   anon_key = "your-anon-key"
+   SUPABASE_URL = "https://your-project.supabase.co"
+   SUPABASE_KEY = "your-anon-key"
    ```
 
 ### 4. Run the app
@@ -78,14 +77,56 @@ The app will open at [http://localhost:8501](http://localhost:8501).
 ## 📂 Project Structure
 
 ```
-toolshare/
-├── app.py                # Main Streamlit app
-├── requirements.txt      # Python dependencies
-├── .devcontainer/        # Codespaces dev environment
-│   └── devcontainer.json
+tool-share-app/
+├── requirements.txt
+├── .devcontainer/
 ├── .streamlit/
 │   └── secrets.toml      # Supabase credentials (not committed!)
-└── README.md
+└── webapp/
+   ├── frontend.py       # Streamlit UI
+   ├── backend_K.py      # Basic client init
+   └── backend_V.py      # Full auth helpers (email/password, OTP, OAuth)
+```
+
+## 🔐 Auth helpers (backend_V)
+
+Examples for the functions in `webapp/backend_V.py`:
+
+```python
+from webapp import backend_V as auth
+
+# Email/password signup
+auth.sign_up_email_password(
+   email="user@example.com",
+   password="StrongPass123!",
+   first_name="Ada",
+   last_name="Lovelace",
+)
+
+# Email/password sign-in
+auth.sign_in_email_password("user@example.com", "StrongPass123!")
+
+# Phone OTP
+auth.send_phone_otp("+15551234567")
+# After user receives SMS code
+auth.verify_phone_otp("+15551234567", token="123456")
+
+# Email OTP (magic link / code)
+auth.send_email_otp("user@example.com")
+# If using code method
+auth.verify_email_otp("user@example.com", token="123456")
+
+# OAuth (Google, GitHub, etc.)
+resp = auth.sign_in_with_oauth("google", redirect_to="http://localhost:8501")
+oauth_url = resp["data"]["url"]
+
+# Exchange code after redirect (PKCE)
+auth.exchange_code_for_session(auth_code)
+
+# Session helpers
+auth.get_user()
+auth.set_session(access_token, refresh_token)
+auth.sign_out()
 ```
 
 ---
