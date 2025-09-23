@@ -1,4 +1,8 @@
 """
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 Sign up page for ToolShare application.
 """
 import streamlit as st
@@ -81,7 +85,7 @@ def main():
     
     with col2:
         if st.button("Already have an account? Login", use_container_width=True):
-            st.switch_page("app/login.py")
+            st.switch_page("pages/login.py")
 
 if __name__ == "__main__":
     main()

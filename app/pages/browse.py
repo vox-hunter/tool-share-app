@@ -1,4 +1,8 @@
 """
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 Browse tools page for ToolShare application.
 """
 import streamlit as st
@@ -55,7 +59,7 @@ def render_tool_card(tool):
         # View details button
         if st.button(f"View Details", key=f"view_{tool['id']}", use_container_width=True):
             st.session_state.selected_tool_id = tool['id']
-            st.switch_page("app/tool_detail.py")
+            st.switch_page("pages/tool_detail.py")
 
 def render_tools_grid(tools):
     """Render tools in a grid layout."""
@@ -93,15 +97,15 @@ def main():
     
     with col3:
         if st.button("➕ Add Tool", use_container_width=True):
-            st.switch_page("app/add_tool.py")
+            st.switch_page("pages/add_tool.py")
     
     with col4:
         if st.button("🔧 My Tools", use_container_width=True):
-            st.switch_page("app/my_tools.py")
+            st.switch_page("pages/my_tools.py")
     
     with col5:
         if st.button("📅 Reservations", use_container_width=True):
-            st.switch_page("app/reservations.py")
+            st.switch_page("pages/reservations.py")
     
     st.title("🔍 Browse Available Tools")
     

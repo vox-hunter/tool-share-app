@@ -2,10 +2,13 @@
 Home page for ToolShare application.
 """
 import streamlit as st
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from lib.auth import is_logged_in, get_current_user, logout
 from lib.services import ToolService
 from lib.storage import display_image
-import os
 
 def render_login_sidebar():
     """Render login/logout in sidebar."""
@@ -19,9 +22,9 @@ def render_login_sidebar():
         else:
             st.write("### Login")
             if st.button("Login", key="login_btn"):
-                st.switch_page("app/login.py")
+                st.switch_page("pages/login.py")
             if st.button("Sign Up", key="signup_btn"):
-                st.switch_page("app/signup.py")
+                st.switch_page("pages/signup.py")
 
 def render_navigation():
     """Render main navigation."""
@@ -33,28 +36,28 @@ def render_navigation():
     
     with col2:
         if st.button("🔍 Browse", use_container_width=True):
-            st.switch_page("app/browse.py")
+            st.switch_page("pages/browse.py")
     
     with col3:
         if st.button("➕ Add Tool", use_container_width=True):
             if not is_logged_in():
                 st.error("Please log in to add tools")
             else:
-                st.switch_page("app/add_tool.py")
+                st.switch_page("pages/add_tool.py")
     
     with col4:
         if st.button("🔧 My Tools", use_container_width=True):
             if not is_logged_in():
                 st.error("Please log in to view your tools")
             else:
-                st.switch_page("app/my_tools.py")
+                st.switch_page("pages/my_tools.py")
     
     with col5:
         if st.button("📅 Reservations", use_container_width=True):
             if not is_logged_in():
                 st.error("Please log in to view reservations")
             else:
-                st.switch_page("app/reservations.py")
+                st.switch_page("pages/reservations.py")
 
 def render_hero_section():
     """Render hero section with app description."""
@@ -98,7 +101,7 @@ def render_featured_tools():
                 
                 if st.button(f"View Details", key=f"view_{tool['id']}"):
                     st.session_state.selected_tool_id = tool['id']
-                    st.switch_page("app/tool_detail.py")
+                    st.switch_page("pages/tool_detail.py")
 
 def render_quick_search():
     """Render quick search section."""
@@ -113,7 +116,7 @@ def render_quick_search():
         if st.button("Search", use_container_width=True):
             if search_term:
                 st.session_state.search_term = search_term
-                st.switch_page("app/browse.py")
+                st.switch_page("pages/browse.py")
 
 def render_stats():
     """Render app statistics."""

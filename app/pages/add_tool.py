@@ -1,4 +1,8 @@
 """
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 Add/Edit tool page for ToolShare application.
 """
 import streamlit as st
@@ -117,7 +121,7 @@ def render_tool_form(tool=None, is_edit=False):
                     
                     if st.button("View Tool"):
                         st.session_state.selected_tool_id = tool['id']
-                        st.switch_page("app/tool_detail.py")
+                        st.switch_page("pages/tool_detail.py")
                 else:
                     st.error("Failed to update tool. You may not have permission.")
             else:
@@ -137,7 +141,7 @@ def render_tool_form(tool=None, is_edit=False):
                     
                     if st.button("View Tool"):
                         st.session_state.selected_tool_id = tool_id
-                        st.switch_page("app/tool_detail.py")
+                        st.switch_page("pages/tool_detail.py")
                 else:
                     st.error("Failed to add tool. Please try again.")
             
@@ -168,13 +172,13 @@ def main():
         if not tool:
             st.error("Tool not found")
             if st.button("My Tools"):
-                st.switch_page("app/my_tools.py")
+                st.switch_page("pages/my_tools.py")
             return
         
         if tool['owner_id'] != current_user['id']:
             st.error("You don't have permission to edit this tool")
             if st.button("My Tools"):
-                st.switch_page("app/my_tools.py")
+                st.switch_page("pages/my_tools.py")
             return
         
         is_edit = True
@@ -185,7 +189,7 @@ def main():
     with col1:
         if st.button("← Back"):
             if is_edit:
-                st.switch_page("app/my_tools.py")
+                st.switch_page("pages/my_tools.py")
             else:
                 st.switch_page("app/home.py")
     

@@ -1,4 +1,8 @@
 """
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 Tool detail page for ToolShare application.
 """
 import streamlit as st
@@ -45,7 +49,7 @@ def render_reservation_form(tool):
     if not is_logged_in():
         st.warning("Please log in to reserve this tool")
         if st.button("Login"):
-            st.switch_page("app/login.py")
+            st.switch_page("pages/login.py")
         return
     
     current_user = get_current_user()
@@ -109,7 +113,7 @@ def render_reservation_form(tool):
                 """)
                 
                 if st.button("View My Reservations"):
-                    st.switch_page("app/reservations.py")
+                    st.switch_page("pages/reservations.py")
             else:
                 st.error("Failed to create reservation. The tool may not be available for those dates.")
 
@@ -127,7 +131,7 @@ def main():
     if not tool_id:
         st.error("No tool selected")
         if st.button("Browse Tools"):
-            st.switch_page("app/browse.py")
+            st.switch_page("pages/browse.py")
         return
     
     # Get tool details
@@ -136,7 +140,7 @@ def main():
     if not tool:
         st.error("Tool not found")
         if st.button("Browse Tools"):
-            st.switch_page("app/browse.py")
+            st.switch_page("pages/browse.py")
         return
     
     # Navigation
@@ -144,7 +148,7 @@ def main():
     
     with col1:
         if st.button("← Back to Browse"):
-            st.switch_page("app/browse.py")
+            st.switch_page("pages/browse.py")
     
     with col2:
         if st.button("🏠 Home"):

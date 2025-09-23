@@ -1,0 +1,63 @@
+# Python cache and build files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test files
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+test_*.db
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Database files (for production)
+# toolshare.db
+
+# Upload directories (should be included in git for demo but ignored in production)
+# uploads/
+# avatars/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
