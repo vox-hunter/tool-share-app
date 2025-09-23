@@ -1,11 +1,10 @@
 """
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 Reservations page for ToolShare application.
 """
 import streamlit as st
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lib.services import ToolService, ReservationService, ReviewService
 from lib.auth import require_login, get_current_user
 from lib.storage import display_image
@@ -54,7 +53,7 @@ def render_reservation_card(reservation, is_borrower=True):
             if st.button(f"Cancel Request", key=f"cancel_{reservation['id']}", 
                        type="secondary", use_container_width=True):
                 current_user = get_current_user()
-                if ReservationService.update_reservation_status(
+                if current_user and ReservationService.update_reservation_status(
                     reservation['id'], current_user['id'], 'cancelled'
                 ):
                     st.success("Reservation cancelled.")
@@ -69,6 +68,9 @@ def render_reservation_card(reservation, is_borrower=True):
                 if st.button(f"✅ Approve", key=f"approve_{reservation['id']}", 
                            type="primary", use_container_width=True):
                     current_user = get_current_user()
+                    if not current_user:
+                        st.error("Unable to get user information. Please try logging in again.")
+                        return
                     if ReservationService.update_reservation_status(
                         reservation['id'], current_user['id'], 'accepted'
                     ):
@@ -81,6 +83,9 @@ def render_reservation_card(reservation, is_borrower=True):
                 if st.button(f"❌ Decline", key=f"decline_{reservation['id']}", 
                            type="secondary", use_container_width=True):
                     current_user = get_current_user()
+                    if not current_user:
+                        st.error("Unable to get user information. Please try logging in again.")
+                        return
                     if ReservationService.update_reservation_status(
                         reservation['id'], current_user['id'], 'declined'
                     ):
@@ -93,7 +98,7 @@ def render_reservation_card(reservation, is_borrower=True):
             if st.button(f"Cancel Reservation", key=f"cancel_{reservation['id']}", 
                        type="secondary", use_container_width=True):
                 current_user = get_current_user()
-                if ReservationService.update_reservation_status(
+                if current_user and ReservationService.update_reservation_status(
                     reservation['id'], current_user['id'], 'cancelled'
                 ):
                     st.success("Reservation cancelled.")
@@ -104,7 +109,7 @@ def render_reservation_card(reservation, is_borrower=True):
         elif status == 'completed':
             # Check if user can leave a review
             current_user = get_current_user()
-            if ReviewService.can_review(reservation['id'], current_user['id']):
+            if current_user and ReviewService.can_review(reservation['id'], current_user['id']):
                 if st.button(f"⭐ Leave Review", key=f"review_{reservation['id']}", 
                            type="primary", use_container_width=True):
                     st.session_state.review_reservation_id = reservation['id']
@@ -136,6 +141,9 @@ def render_review_form(reservation_id):
         
         if submit:
             current_user = get_current_user()
+            if not current_user:
+                st.error("Unable to get user information. Please try logging in again.")
+                return
             review_id = ReviewService.create_review(
                 reservation_id, current_user['id'], rating, comment
             )
@@ -165,12 +173,16 @@ def main():
     require_login()
     current_user = get_current_user()
     
+    if not current_user:
+        st.error("Unable to get user information. Please try logging in again.")
+        st.stop()
+    
     # Navigation
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
         if st.button("🏠 Home", use_container_width=True):
-            st.switch_page("app/home.py")
+            st.switch_page("home.py")
     
     with col2:
         if st.button("🔍 Browse", use_container_width=True):
@@ -187,6 +199,15 @@ def main():
     with col5:
         if st.button("📅 Reservations", use_container_width=True, disabled=True):
             pass  # Current page
+    
+    with col6:
+        current_user = get_current_user()
+        if current_user:
+            if st.button(f"👤 {current_user['full_name']}", use_container_width=True):
+                st.switch_page("pages/profile.py")
+        else:
+            if st.button("🔑 Account", use_container_width=True):
+                st.switch_page("pages/login.py")
     
     # Handle review form
     if 'review_reservation_id' in st.session_state:

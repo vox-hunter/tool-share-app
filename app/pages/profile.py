@@ -166,7 +166,7 @@ def render_account_settings(user):
     if st.button("🚪 Logout", type="secondary", use_container_width=True):
         logout()
         st.success("You have been logged out.")
-        st.switch_page("app/home.py")
+        st.switch_page("home.py")
 
 def main():
     """Main profile page function."""
@@ -181,11 +181,11 @@ def main():
     current_user = get_current_user()
     
     # Navigation
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
         if st.button("🏠 Home", use_container_width=True):
-            st.switch_page("app/home.py")
+            st.switch_page("home.py")
     
     with col2:
         if st.button("🔍 Browse", use_container_width=True):
@@ -202,6 +202,12 @@ def main():
     with col5:
         if st.button("👤 Profile", use_container_width=True, disabled=True):
             pass  # Current page
+    
+    with col6:
+        # This is the profile page, so show logout option
+        if st.button("😪 Logout", use_container_width=True):
+            logout()
+            st.switch_page("home.py")
     
     # Page header
     st.title(f"👤 {current_user['full_name']}")

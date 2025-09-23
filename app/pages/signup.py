@@ -19,7 +19,7 @@ def main():
     if is_logged_in():
         st.info("You are already logged in!")
         if st.button("Go to Home"):
-            st.switch_page("app/home.py")
+            st.switch_page("home.py")
         return
     
     st.title("📝 Join ToolShare")
@@ -72,7 +72,7 @@ def main():
                 st.session_state.username = username
                 
                 st.info("You are now logged in. Redirecting to home page...")
-                st.switch_page("app/home.py")
+                st.switch_page("home.py")
             else:
                 st.error("Username already exists. Please choose a different username.")
     
@@ -81,7 +81,7 @@ def main():
     col1, col2 = st.columns(2)
     with col1:
         if st.button("← Back to Home", use_container_width=True):
-            st.switch_page("app/home.py")
+            st.switch_page("home.py")
     
     with col2:
         if st.button("Already have an account? Login", use_container_width=True):

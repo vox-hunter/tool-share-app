@@ -15,7 +15,7 @@ def require_admin():
     """Require admin access."""
     require_login()
     current_user = get_current_user()
-    if not is_admin(current_user['id']):
+    if not current_user or not is_admin(current_user['id']):
         st.error("Access denied. Admin privileges required.")
         st.stop()
 
@@ -309,7 +309,7 @@ def render_logs_tab():
                 try:
                     payload = json.loads(log['json_payload'])
                     payload_text = str(payload)[:100] + "..." if len(str(payload)) > 100 else str(payload)
-                except:
+                except (json.JSONDecodeError, TypeError):
                     payload_text = log['json_payload'][:100]
             
             logs_display.append({
@@ -424,7 +424,7 @@ def main():
     # Back to main app
     st.markdown("---")
     if st.button("← Back to Main App", use_container_width=True):
-        st.switch_page("app/home.py")
+        st.switch_page("home.py")
 
 if __name__ == "__main__":
     main()

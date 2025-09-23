@@ -3,8 +3,8 @@ Core business logic services for ToolShare.
 """
 import json
 import sqlite3
-from typing import List, Dict, Optional, Tuple
-from datetime import datetime, date
+from typing import List, Dict, Optional
+from datetime import date
 from lib.db import get_connection, check_reservation_conflict, log_action
 from lib.storage import delete_images
 import logging
@@ -16,14 +16,14 @@ class ToolService:
     
     @staticmethod
     def create_tool(owner_id: int, title: str, description: str, category: str, 
-                   condition: str, image_paths: List[str]) -> Optional[int]:
+                   condition: str, price: float, contact_info: str, image_paths: List[str]) -> Optional[int]:
         """Create a new tool."""
         conn = get_connection()
         try:
             cursor = conn.execute(
-                """INSERT INTO tools (owner_id, title, description, category, condition, image_paths)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (owner_id, title, description, category, condition, json.dumps(image_paths))
+                """INSERT INTO tools (owner_id, title, description, category, condition, price, contact_info, image_paths)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (owner_id, title, description, category, condition, price, contact_info, json.dumps(image_paths))
             )
             tool_id = cursor.lastrowid
             conn.commit()
@@ -31,12 +31,12 @@ class ToolService:
             log_action(owner_id, "tool_created", {
                 "tool_id": tool_id, "title": title, "category": category
             })
-            logger.info(f"Tool created: {title} (ID: {tool_id}) by user {owner_id}")
+            logger.info("Tool created: %s (ID: %s) by user %s", title, tool_id, owner_id)
             return tool_id
             
-        except Exception as e:
+        except sqlite3.Error as e:
             conn.rollback()
-            logger.error(f"Error creating tool: {e}")
+            logger.error("Error creating tool: %s", e)
             return None
         finally:
             conn.close()
@@ -61,7 +61,7 @@ class ToolService:
                 return tool_data
             return None
             
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Error fetching tool: {e}")
             return None
         finally:
@@ -108,7 +108,7 @@ class ToolService:
             
             return tools
             
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Error fetching tools: {e}")
             return []
         finally:
@@ -116,7 +116,7 @@ class ToolService:
     
     @staticmethod
     def update_tool(tool_id: int, user_id: int, title: str, description: str, 
-                   category: str, condition: str, image_paths: List[str]) -> bool:
+                   category: str, condition: str, price: float, contact_info: str, image_paths: List[str]) -> bool:
         """Update tool (only by owner)."""
         conn = get_connection()
         try:
@@ -129,16 +129,16 @@ class ToolService:
             conn.execute(
                 """UPDATE tools 
                    SET title = ?, description = ?, category = ?, condition = ?, 
-                       image_paths = ?, updated_at = CURRENT_TIMESTAMP
+                       price = ?, contact_info = ?, image_paths = ?, updated_at = CURRENT_TIMESTAMP
                    WHERE id = ?""",
-                (title, description, category, condition, json.dumps(image_paths), tool_id)
+                (title, description, category, condition, price, contact_info, json.dumps(image_paths), tool_id)
             )
             conn.commit()
             
             log_action(user_id, "tool_updated", {"tool_id": tool_id, "title": title})
             return True
             
-        except Exception as e:
+        except sqlite3.Error as e:
             conn.rollback()
             logger.error(f"Error updating tool: {e}")
             return False
@@ -156,29 +156,27 @@ class ToolService:
             if not tool or tool['owner_id'] != user_id:
                 return False
             
-            # Check for active reservations
+            # Always use soft delete to avoid foreign key constraints
+            # Tools with any reservations (past or present) should not be hard deleted
             cursor = conn.execute(
-                "SELECT COUNT(*) FROM reservations WHERE tool_id = ? AND status IN ('requested', 'accepted')",
+                "SELECT COUNT(*) FROM reservations WHERE tool_id = ?",
                 (tool_id,)
             )
-            active_reservations = cursor.fetchone()[0]
+            any_reservations = cursor.fetchone()[0]
             
-            if active_reservations > 0:
-                # Soft delete - mark as inactive
+            if any_reservations > 0:
+                # Soft delete - mark as inactive (has reservation history)
                 conn.execute("UPDATE tools SET is_active = 0 WHERE id = ?", (tool_id,))
                 log_action(user_id, "tool_deactivated", {"tool_id": tool_id})
             else:
-                # Hard delete - remove completely
-                image_paths = json.loads(tool['image_paths'] or '[]')
-                conn.execute("DELETE FROM tools WHERE id = ?", (tool_id,))
-                # Delete associated images
-                delete_images(image_paths)
-                log_action(user_id, "tool_deleted", {"tool_id": tool_id})
+                # Soft delete for consistency (can be changed to hard delete if needed)
+                conn.execute("UPDATE tools SET is_active = 0 WHERE id = ?", (tool_id,))
+                log_action(user_id, "tool_deactivated", {"tool_id": tool_id})
             
             conn.commit()
             return True
             
-        except Exception as e:
+        except sqlite3.Error as e:
             conn.rollback()
             logger.error(f"Error deleting tool: {e}")
             return False
@@ -194,7 +192,7 @@ class ToolService:
                 "SELECT DISTINCT category FROM tools WHERE is_active = 1 ORDER BY category"
             )
             return [row[0] for row in cursor.fetchall()]
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Error fetching categories: {e}")
             return []
         finally:
@@ -240,7 +238,7 @@ class ReservationService:
             logger.info(f"Reservation created: {reservation_id} for tool {tool_id}")
             return reservation_id
             
-        except Exception as e:
+        except sqlite3.Error as e:
             conn.rollback()
             logger.error(f"Error creating reservation: {e}")
             return None
@@ -266,7 +264,7 @@ class ReservationService:
             reservation = cursor.fetchone()
             return dict(reservation) if reservation else None
             
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Error fetching reservation: {e}")
             return None
         finally:
@@ -307,7 +305,7 @@ class ReservationService:
             
             return reservations
             
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Error fetching user reservations: {e}")
             return []
         finally:
@@ -348,7 +346,7 @@ class ReservationService:
             log_action(user_id, f"reservation_{status}", {"reservation_id": reservation_id})
             return True
             
-        except Exception as e:
+        except sqlite3.Error as e:
             conn.rollback()
             logger.error(f"Error updating reservation status: {e}")
             return False
@@ -369,7 +367,7 @@ class ReservationService:
             conn.commit()
             return True
             
-        except Exception as e:
+        except sqlite3.Error as e:
             conn.rollback()
             logger.error(f"Error marking reservation completed: {e}")
             return False
@@ -417,7 +415,7 @@ class ReviewService:
                 
             return True
             
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Error checking review eligibility: {e}")
             return False
         finally:
@@ -444,7 +442,7 @@ class ReviewService:
             })
             return review_id
             
-        except Exception as e:
+        except sqlite3.Error as e:
             conn.rollback()
             logger.error(f"Error creating review: {e}")
             return None
@@ -472,7 +470,7 @@ class ReviewService:
                 reviews.append(dict(row))
             return reviews
             
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Error fetching user reviews: {e}")
             return []
         finally:
@@ -494,7 +492,7 @@ class ReviewService:
             result = cursor.fetchone()
             return round(result[0], 1) if result[0] else 0.0
             
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"Error calculating user rating: {e}")
             return 0.0
         finally:

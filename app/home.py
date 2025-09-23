@@ -8,31 +8,14 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lib.auth import is_logged_in, get_current_user, logout
 from lib.services import ToolService
-from lib.storage import display_image
-
-def render_login_sidebar():
-    """Render login/logout in sidebar."""
-    with st.sidebar:
-        if is_logged_in():
-            user = get_current_user()
-            st.write(f"Welcome, {user['full_name']}!")
-            if st.button("Logout"):
-                logout()
-                st.rerun()
-        else:
-            st.write("### Login")
-            if st.button("Login", key="login_btn"):
-                st.switch_page("pages/login.py")
-            if st.button("Sign Up", key="signup_btn"):
-                st.switch_page("pages/signup.py")
 
 def render_navigation():
     """Render main navigation."""
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
         if st.button("🏠 Home", use_container_width=True):
-            st.switch_page("app/home.py")
+            st.switch_page("home.py")
     
     with col2:
         if st.button("🔍 Browse", use_container_width=True):
@@ -58,6 +41,16 @@ def render_navigation():
                 st.error("Please log in to view reservations")
             else:
                 st.switch_page("pages/reservations.py")
+    
+    with col6:
+        if is_logged_in():
+            user = get_current_user()
+            if user:
+                if st.button(f"👤 {user['full_name']}", use_container_width=True):
+                    st.switch_page("pages/profile.py")
+        else:
+            if st.button("🔑 Account", use_container_width=True):
+                st.switch_page("pages/login.py")
 
 def render_hero_section():
     """Render hero section with app description."""
@@ -99,7 +92,7 @@ def render_featured_tools():
                     if os.path.exists(image_path):
                         st.image(image_path, width=200)
                 
-                if st.button(f"View Details", key=f"view_{tool['id']}"):
+                if st.button("View Details", key=f"view_{tool['id']}"):
                     st.session_state.selected_tool_id = tool['id']
                     st.switch_page("pages/tool_detail.py")
 
@@ -140,7 +133,6 @@ def main():
         layout="wide"
     )
     
-    render_login_sidebar()
     render_navigation()
     render_hero_section()
     render_quick_search()

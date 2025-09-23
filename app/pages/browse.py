@@ -1,12 +1,12 @@
 """
+Browse tools page for ToolShare application.
+"""
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-Browse tools page for ToolShare application.
-"""
 import streamlit as st
 from lib.services import ToolService
+from lib.auth import get_current_user
 from lib.storage import display_image
 import os
 
@@ -48,6 +48,13 @@ def render_tool_card(tool):
         st.markdown(f"### {tool['title']}")
         st.write(f"**Category:** {tool['category']}")
         st.write(f"**Condition:** {tool['condition'].title()}")
+        
+        # Price
+        if tool.get('price', 0) > 0:
+            st.write(f"**Price:** ${tool['price']:.2f}/day")
+        else:
+            st.write("**Price:** Free")
+            
         st.write(f"**Owner:** {tool['full_name']}")
         
         # Description (truncated)
@@ -57,7 +64,7 @@ def render_tool_card(tool):
         st.write(description)
         
         # View details button
-        if st.button(f"View Details", key=f"view_{tool['id']}", use_container_width=True):
+        if st.button("View Details", key=f"view_{tool['id']}", use_container_width=True):
             st.session_state.selected_tool_id = tool['id']
             st.switch_page("pages/tool_detail.py")
 
@@ -85,11 +92,11 @@ def main():
     )
     
     # Navigation
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
         if st.button("🏠 Home", use_container_width=True):
-            st.switch_page("app/home.py")
+            st.switch_page("home.py")
     
     with col2:
         if st.button("🔍 Browse", use_container_width=True, disabled=True):
@@ -106,6 +113,15 @@ def main():
     with col5:
         if st.button("📅 Reservations", use_container_width=True):
             st.switch_page("pages/reservations.py")
+    
+    with col6:
+        current_user = get_current_user()
+        if current_user:
+            if st.button(f"👤 {current_user['full_name']}", use_container_width=True):
+                st.switch_page("pages/profile.py")
+        else:
+            if st.button("🔑 Account", use_container_width=True):
+                st.switch_page("pages/login.py")
     
     st.title("🔍 Browse Available Tools")
     

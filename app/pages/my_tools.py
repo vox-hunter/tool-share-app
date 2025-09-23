@@ -1,14 +1,12 @@
 """
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 My Tools page for ToolShare application.
 """
 import streamlit as st
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lib.services import ToolService, ReservationService
 from lib.auth import require_login, get_current_user
-from lib.storage import display_image
 import os
 
 def render_tool_card(tool):
@@ -76,6 +74,9 @@ def render_tool_requests(tool_id, tool_title):
     st.subheader(f"📋 Reservation Requests for: {tool_title}")
     
     current_user = get_current_user()
+    if not current_user:
+        st.error("Unable to get user information. Please try logging in again.")
+        return
     reservations = ReservationService.get_user_reservations(current_user['id'], as_borrower=False)
     
     # Filter for this specific tool
@@ -138,6 +139,9 @@ def render_delete_confirmation(tool_id):
     with col1:
         if st.button("❌ Yes, Delete", use_container_width=True, type="primary"):
             current_user = get_current_user()
+            if not current_user:
+                st.error("Unable to get user information. Please try logging in again.")
+                return
             if ToolService.delete_tool(tool_id, current_user['id']):
                 st.success("Tool deleted successfully!")
                 if 'confirm_delete_tool_id' in st.session_state:
@@ -164,12 +168,16 @@ def main():
     require_login()
     current_user = get_current_user()
     
+    if not current_user:
+        st.error("Unable to get user information. Please try logging in again.")
+        st.stop()
+    
     # Navigation
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
         if st.button("🏠 Home", use_container_width=True):
-            st.switch_page("app/home.py")
+            st.switch_page("home.py")
     
     with col2:
         if st.button("🔍 Browse", use_container_width=True):
@@ -186,6 +194,15 @@ def main():
     with col5:
         if st.button("📅 Reservations", use_container_width=True):
             st.switch_page("pages/reservations.py")
+    
+    with col6:
+        current_user = get_current_user()
+        if current_user:
+            if st.button(f"👤 {current_user['full_name']}", use_container_width=True):
+                st.switch_page("pages/profile.py")
+        else:
+            if st.button("🔑 Account", use_container_width=True):
+                st.switch_page("pages/login.py")
     
     # Handle delete confirmation
     if 'confirm_delete_tool_id' in st.session_state:

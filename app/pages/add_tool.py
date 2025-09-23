@@ -1,10 +1,9 @@
 """
+Add/Edit tool page for ToolShare application.
+"""
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-Add/Edit tool page for ToolShare application.
-"""
 import streamlit as st
 from lib.services import ToolService
 from lib.auth import require_login, get_current_user
@@ -37,6 +36,16 @@ def render_tool_form(tool=None, is_edit=False):
                 CATEGORIES,
                 index=CATEGORIES.index(tool['category']) if tool and tool['category'] in CATEGORIES else 0
             )
+            
+            # Price field
+            price = st.number_input(
+                "Price per Day ($)", 
+                min_value=0.00,
+                max_value=999.99,
+                value=float(tool['price']) if tool and tool.get('price') else 0.00,
+                step=0.50,
+                help="Set to $0.00 if the tool is free to borrow"
+            )
         
         with col2:
             condition = st.selectbox(
@@ -44,6 +53,14 @@ def render_tool_form(tool=None, is_edit=False):
                 CONDITIONS,
                 index=CONDITIONS.index(tool['condition']) if tool else 1,
                 format_func=lambda x: x.title()
+            )
+            
+            # Contact information field
+            contact_info = st.text_input(
+                "Contact Information", 
+                value=tool['contact_info'] if tool and tool.get('contact_info') else "",
+                placeholder="Phone, email, or preferred contact method",
+                help="How borrowers can reach you (optional - they can also message through the app)"
             )
         
         description = st.text_area(
@@ -103,6 +120,10 @@ def render_tool_form(tool=None, is_edit=False):
             
             current_user = get_current_user()
             
+            if not current_user:
+                st.error("Please log in to add/edit tools.")
+                return False
+            
             if is_edit and tool:
                 # Update existing tool
                 success = ToolService.update_tool(
@@ -112,16 +133,15 @@ def render_tool_form(tool=None, is_edit=False):
                     description,
                     category,
                     condition,
+                    price,
+                    contact_info,
                     image_paths
                 )
                 
                 if success:
                     st.success("Tool updated successfully!")
                     st.balloons()
-                    
-                    if st.button("View Tool"):
-                        st.session_state.selected_tool_id = tool['id']
-                        st.switch_page("pages/tool_detail.py")
+                    st.session_state.tool_updated = tool['id']
                 else:
                     st.error("Failed to update tool. You may not have permission.")
             else:
@@ -132,20 +152,32 @@ def render_tool_form(tool=None, is_edit=False):
                     description,
                     category,
                     condition,
+                    price,
+                    contact_info,
                     image_paths
                 )
                 
                 if tool_id:
                     st.success("Tool added successfully!")
                     st.balloons()
-                    
-                    if st.button("View Tool"):
-                        st.session_state.selected_tool_id = tool_id
-                        st.switch_page("pages/tool_detail.py")
+                    st.session_state.tool_created = tool_id
                 else:
                     st.error("Failed to add tool. Please try again.")
             
             return True
+    
+    # Show "View Tool" button outside the form if tool was created/updated
+    if hasattr(st.session_state, 'tool_created') and st.session_state.tool_created:
+        if st.button("View Tool", key="view_new_tool"):
+            st.session_state.selected_tool_id = st.session_state.tool_created
+            del st.session_state.tool_created  # Clear the state
+            st.switch_page("pages/tool_detail.py")
+    
+    if hasattr(st.session_state, 'tool_updated') and st.session_state.tool_updated:
+        if st.button("View Tool", key="view_updated_tool"):
+            st.session_state.selected_tool_id = st.session_state.tool_updated
+            del st.session_state.tool_updated  # Clear the state
+            st.switch_page("pages/tool_detail.py")
     
     return False
 
@@ -169,13 +201,17 @@ def main():
         tool = ToolService.get_tool(tool_id)
         current_user = get_current_user()
         
+        if not current_user:
+            st.error("Please log in to edit tools.")
+            return
+        
         if not tool:
             st.error("Tool not found")
             if st.button("My Tools"):
                 st.switch_page("pages/my_tools.py")
             return
         
-        if tool['owner_id'] != current_user['id']:
+        if tool and tool['owner_id'] != current_user['id']:
             st.error("You don't have permission to edit this tool")
             if st.button("My Tools"):
                 st.switch_page("pages/my_tools.py")
@@ -191,14 +227,14 @@ def main():
             if is_edit:
                 st.switch_page("pages/my_tools.py")
             else:
-                st.switch_page("app/home.py")
+                st.switch_page("home.py")
     
     with col2:
         if st.button("🏠 Home"):
-            st.switch_page("app/home.py")
+            st.switch_page("home.py")
     
     # Page title
-    if is_edit:
+    if is_edit and tool:
         st.title(f"✏️ Edit Tool: {tool['title']}")
     else:
         st.title("➕ Add New Tool")

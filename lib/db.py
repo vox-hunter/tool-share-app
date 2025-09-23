@@ -2,15 +2,16 @@
 Database connection and migration utilities for ToolShare.
 """
 import sqlite3
-import os
 import json
-from typing import Optional, Dict, List, Any
-from datetime import datetime
+from typing import Optional, Dict, Any
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
-DATABASE_PATH = "toolshare.db"
+# Get the absolute path to the database file in the project root
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATABASE_PATH = os.path.join(PROJECT_ROOT, "toolshare.db")
 
 def get_connection() -> sqlite3.Connection:
     """Get a database connection with proper configuration."""
@@ -45,13 +46,26 @@ def init_database():
                 description TEXT NOT NULL,
                 category TEXT NOT NULL,
                 condition TEXT NOT NULL CHECK (condition IN ('new', 'good', 'fair')),
+                price DECIMAL(10,2) DEFAULT 0.00, -- Price per day, 0.00 means free
+                contact_info TEXT, -- Contact information for the tool owner
                 image_paths TEXT, -- JSON array of image paths
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (owner_id) REFERENCES users (id)
             )
-        """)
+        """)        
+        
+        # Add price and contact_info columns if they don't exist (for existing databases)
+        try:
+            conn.execute("ALTER TABLE tools ADD COLUMN price DECIMAL(10,2) DEFAULT 0.00")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+            
+        try:
+            conn.execute("ALTER TABLE tools ADD COLUMN contact_info TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         
         # Reservations table with overlap prevention
         conn.execute("""
@@ -107,9 +121,9 @@ def init_database():
         conn.commit()
         logger.info("Database initialized successfully")
         
-    except Exception as e:
+    except sqlite3.Error as e:
         conn.rollback()
-        logger.error(f"Error initializing database: {e}")
+        logger.error("Error initializing database: %s", e)
         raise
     finally:
         conn.close()
@@ -154,8 +168,8 @@ def log_action(actor_id: Optional[int], action_type: str, payload: Dict[str, Any
             (actor_id, action_type, json.dumps(payload))
         )
         conn.commit()
-    except Exception as e:
-        logger.error(f"Error logging action: {e}")
+    except sqlite3.Error as e:
+        logger.error("Error logging action: %s", e)
     finally:
         conn.close()
 

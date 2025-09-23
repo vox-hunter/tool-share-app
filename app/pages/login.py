@@ -19,7 +19,7 @@ def main():
     if is_logged_in():
         st.success("You are already logged in!")
         if st.button("Go to Home"):
-            st.switch_page("app/home.py")
+            st.switch_page("home.py")
         return
     
     st.title("🔐 Login to ToolShare")
@@ -46,7 +46,7 @@ def main():
                 
                 # Add a delay before redirect
                 st.write("Redirecting to home page...")
-                st.switch_page("app/home.py")
+                st.switch_page("home.py")
             else:
                 st.error("Invalid username or password")
     
@@ -55,7 +55,7 @@ def main():
     col1, col2 = st.columns(2)
     with col1:
         if st.button("← Back to Home", use_container_width=True):
-            st.switch_page("app/home.py")
+            st.switch_page("home.py")
     
     with col2:
         if st.button("Don't have an account? Sign Up", use_container_width=True):

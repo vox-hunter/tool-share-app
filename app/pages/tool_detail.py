@@ -28,6 +28,13 @@ def render_tool_info(tool):
         st.markdown(f"# {tool['title']}")
         st.write(f"**Category:** {tool['category']}")
         st.write(f"**Condition:** {tool['condition'].title()}")
+        
+        # Price information
+        if tool.get('price', 0) > 0:
+            st.write(f"**Price:** ${tool['price']:.2f} per day")
+        else:
+            st.write("**Price:** Free to borrow")
+        
         st.write(f"**Description:**")
         st.write(tool['description'])
     
@@ -41,7 +48,10 @@ def render_tool_info(tool):
         st.write(f"**{tool['full_name']}**")
         st.write(f"@{tool['username']}")
         
-        # Contact info could go here
+        # Contact information
+        if tool.get('contact_info'):
+            st.write(f"**Contact:** {tool['contact_info']}")
+        
         st.write(f"**Member since:** {tool['created_at'][:10]}")
 
 def render_reservation_form(tool):
@@ -53,6 +63,11 @@ def render_reservation_form(tool):
         return
     
     current_user = get_current_user()
+    
+    # Check if user data is available
+    if not current_user:
+        st.error("Unable to get user information. Please try logging in again.")
+        return
     
     # Don't allow owner to reserve their own tool
     if current_user['id'] == tool['owner_id']:
@@ -112,10 +127,15 @@ def render_reservation_form(tool):
                 - Status: Pending approval
                 """)
                 
-                if st.button("View My Reservations"):
-                    st.switch_page("pages/reservations.py")
+                st.session_state.reservation_created = True
             else:
                 st.error("Failed to create reservation. The tool may not be available for those dates.")
+
+    # Show "View My Reservations" button outside the form if reservation was created
+    if hasattr(st.session_state, 'reservation_created') and st.session_state.reservation_created:
+        if st.button("View My Reservations", key="view_reservations"):
+            del st.session_state.reservation_created  # Clear the state
+            st.switch_page("pages/reservations.py")
 
 def main():
     """Main tool detail page function."""
@@ -152,7 +172,7 @@ def main():
     
     with col2:
         if st.button("🏠 Home"):
-            st.switch_page("app/home.py")
+            st.switch_page("home.py")
     
     # Tool information
     render_tool_info(tool)
