@@ -1,0 +1,12 @@
+[server]
+# Set the port and address for Streamlit
+port = 8501
+address = "0.0.0.0"
+
+[theme]
+# Example theme settings
+primaryColor = "#ADD8E6"
+backgroundColor = "#89CFF0"
+secondaryBackgroundColor = "#6495ED"
+textColor = "#262730"
+font = "sans serif"
