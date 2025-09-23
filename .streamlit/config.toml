@@ -4,7 +4,6 @@ port = 8501
 address = "0.0.0.0"
 
 [theme]
-# Example theme settings
 primaryColor = "#ADD8E6"
 backgroundColor = "#89CFF0"
 secondaryBackgroundColor = "#6495ED"
