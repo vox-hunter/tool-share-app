@@ -6,7 +6,7 @@ st.set_page_config(
 
 st.write("# GearGrid") #name of the app
 
-tab1, tab2, tab3, tab4 = st.tabs(["Home", "Account", "Add Tool", "Reservations"])
+tab1, tab2, tab3, tab4 = st.tabs(["Home", "Account", "Reservations", "My Page"])
 
 with tab1:
     st.header("About Us.")
@@ -22,7 +22,7 @@ with tab2:
 
     col1, col2 = st.columns(2)
 
-    # --- LOGIN (Left Column) ---
+    # Login (Left Column)
     with col1:
         st.subheader("Login")
         st.info("Login/Signup via Supabase (placeholder)")
@@ -34,7 +34,7 @@ with tab2:
         if st.button("Login"):
             st.success("Logged in successfully!")
 
-    # --- SIGN UP (Right Column) ---
+    # Sign Up (Right Column)
     with col2:
         st.subheader("Sign Up")
         if hasattr(st, "dialog"): #Check if dialog is supported
@@ -49,39 +49,81 @@ with tab2:
                 if st.button("Submit"):
                     st.success(f"Thanks for signing up, {name}!")
 
-
             if st.button("Sign Up Form"):
                 show_signup_dialog()
 
 with tab3:
-    st.header("Add a Tool")
-    def add_tool():
-        with st.form("add_tool_form"):
-            name = st.text_input("Tool Name")
-            desc = st.text_area("Description")
-            submit = st.form_submit_button("Post Tool")
-            if submit:
-                # TODO: Add to Supabase
-                st.success(f"'{name}' added to page!")
-    add_tool()
-
-with tab4:
     def reservations():
         st.header("Your Reservations")
         # TODO: Fetch user reservations from Supabase
         st.info("No reservations yet.")
     reservations()
 
-# Sidebar input
+if "user_tools" not in st.session_state:
+    st.session_state.user_tools = []
+
+with tab4:
+
+    # Post a New Tool
+    st.subheader("Post a New Tool")
+    tool_name = st.text_input("Name", key="new_tool_name")
+    tool_desc = st.text_area("Description", key="new_tool_desc")
+
+    if st.button("Add Tool to Profile"):
+        if tool_name:
+            st.session_state.user_tools.append({
+                "name": tool_name,
+                "desc": tool_desc
+            })
+            # TODO: Add to Supabase
+            st.success(f"'{tool_name}' posted successfully!")
+        else:
+            st.warning("Please enter a tool name!")
+
+    st.markdown("---")
+
+    # --- Display Tools in Grid Cards ---
+    st.subheader("Your Profile")
+
+    tools = st.session_state.user_tools
+
+    if tools:
+        # Display 2 tools per row
+        cols = st.columns(2)
+        for idx, tool in enumerate(tools):
+            col = cols[idx % 2] #Ensures two columns displayed
+            with col:
+                st.markdown(
+                    f"""
+                    <div style='
+                        background-color:#f9f9f9;
+                        padding:15px;
+                        margin-bottom:10px;
+                        border-radius:10px;
+                        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                    '>
+                        <h4 style='margin:0'>{tool['name']}</h4>
+                        <p>{tool['desc']}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                # Delete button
+                if st.button("Delete", key=f"del_{idx}"):
+                    st.session_state.user_tools.pop(idx)
+    else:
+        st.info("You haven't posted any tools yet!")
+
+# Tool Search Sidebar
 st.sidebar.header("Tool Search")
 tool_name = st.sidebar.text_input("Name")
 tool_type = st.sidebar.selectbox("Tool Type", ["Hand Tool", "Power Tool", "Pneumatic Tool"])
 submit = st.sidebar.button("Submit")
 
-# Main Routing
-# Browse Tools
+# Browse Tools Sidebar
 def browse_tools():
     st.sidebar.header("Browse Available Tools")
     # TODO: Fetch and display tools from Supabase
     st.sidebar.info("Tool browsing feature coming soon.")
 browse_tools()
+
