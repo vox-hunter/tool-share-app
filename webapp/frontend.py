@@ -106,6 +106,19 @@ def _fetch_user_reservations(user_id: str | None):
     )
 
 
+def _fetch_owner_reservations(owner_id: str | None):
+    if not owner_id:
+        return [], "Please sign in to view requests."
+    tools = st.session_state.get("user_tools", [])
+    tool_ids = [tool.get("id") for tool in tools if tool.get("id")]
+    if not tool_ids:
+        return [], None
+    return _execute_supabase(
+        lambda: backend_K.supabase.table("reservations").select("*").in_("tool_id", tool_ids).order("start_date", desc=True),
+        default=[],
+    )
+
+
 def _create_reservation(tool_id: str, borrower_id: str, tool_name: str, start_date: date, end_date: date, notes: str | None = None):
     payload = {
         "tool_id": tool_id,
@@ -131,6 +144,7 @@ if "user_tools" not in st.session_state:
     st.session_state["user_tools"] = []
 
 st.session_state.setdefault("reservations_cache", None)
+st.session_state.setdefault("owner_reservations_cache", None)
 st.session_state.setdefault("search_results", [])
 st.session_state.setdefault("search_error", None)
 st.session_state.setdefault("search_submitted", False)
@@ -153,9 +167,8 @@ if st.session_state.get("reset_tool_form"):
     st.session_state["reset_tool_form"] = False
 
 if st.session_state.get("reset_reservation_form"):
-    today_now = date.today()
-    st.session_state["reservation_start_date"] = today_now
-    st.session_state["reservation_end_date"] = today_now + timedelta(days=3)
+    st.session_state["reservation_start_date"] = date.today()
+    st.session_state["reservation_end_date"] = date.today() + timedelta(days=3)
     st.session_state["reservation_notes"] = ""
     st.session_state["reset_reservation_form"] = False
 
@@ -215,9 +228,13 @@ with tab2:
                         }
                         st.session_state["user_tools"] = []
                         st.session_state["reservations_cache"] = None
+                        st.session_state["owner_reservations_cache"] = None
                         st.session_state["search_results"] = []
                         st.session_state["search_error"] = None
                         st.session_state["search_submitted"] = False
+                        st.session_state["selected_tool"] = None
+                        st.session_state["reservation_flash"] = None
+                        st.session_state["reset_reservation_form"] = True
                         st.session_state["supabase_health"] = _run_supabase_health_check()
                         st.success(f"Logged in as {user_email or 'current user'}")
                 except Exception as exc:  # pragma: no cover - network/auth failure guard
@@ -233,9 +250,13 @@ with tab2:
                     st.session_state["current_user"] = None
                     st.session_state["user_tools"] = []
                     st.session_state["reservations_cache"] = None
+                    st.session_state["owner_reservations_cache"] = None
                     st.session_state["search_results"] = []
                     st.session_state["search_error"] = None
                     st.session_state["search_submitted"] = False
+                    st.session_state["selected_tool"] = None
+                    st.session_state["reservation_flash"] = None
+                    st.session_state["reset_reservation_form"] = True
                     st.session_state["supabase_health"] = _run_supabase_health_check()
                     st.success("Signed out successfully.")
 
@@ -286,10 +307,14 @@ with tab3:
             st.info("Sign in to view and manage reservations.")
             return
 
+        owned_tools_error = _refresh_user_tools(user_id)
+        if owned_tools_error:
+            st.warning(f"Unable to sync your tools: {owned_tools_error}")
+
         flash = st.session_state.get("reservation_flash")
-        if isinstance(flash, dict) and flash.get("message"):
-            message = flash.get("message")
+        if isinstance(flash, dict) and flash.get("message" ):
             level = flash.get("type", "info")
+            message = flash.get("message")
             if level == "success":
                 st.success(message)
             elif level == "warning":
@@ -355,6 +380,7 @@ with tab3:
                             st.error(f"Unable to create reservation: {error}")
                         else:
                             st.session_state["reservations_cache"] = None
+                            st.session_state["owner_reservations_cache"] = None
                             st.session_state["selected_tool"] = None
                             st.session_state["reservation_flash"] = {
                                 "type": "success",
@@ -381,24 +407,63 @@ with tab3:
             st.warning(f"Unable to load reservations: {cached['error']}")
             return
 
+        st.subheader("Your Reservation Requests")
         reservations_data = cached.get("data", [])
         if not reservations_data:
             st.info("No reservations yet.")
-            return
+        else:
+            for idx, reservation in enumerate(reservations_data, start=1):
+                with st.expander(f"Reservation {idx}", expanded=False):
+                    tool_name = reservation.get("tool_name") or reservation.get("tool_id") or "Unknown tool"
+                    st.markdown(f"**Tool:** {tool_name}")
+                    st.markdown(f"**Borrower:** {current_user.get('email', 'You')}")
+                    start_date_val = reservation.get("start_date") or "Unknown"
+                    end_date_val = reservation.get("end_date") or "Unknown"
+                    st.markdown(f"**Start:** {start_date_val}")
+                    st.markdown(f"**End:** {end_date_val}")
+                    status = reservation.get("status") or "Pending"
+                    st.markdown(f"**Status:** {status}")
+                    st.caption("Reservation metadata")
+                    st.json(reservation)
 
-        for idx, reservation in enumerate(reservations_data, start=1):
-            with st.expander(f"Reservation {idx}", expanded=False):
-                tool_name = reservation.get("tool_name") or reservation.get("tool_id") or "Unknown tool"
-                st.markdown(f"**Tool:** {tool_name}")
-                st.markdown(f"**Borrower:** {current_user.get('email', 'You')}")
-                start_date = reservation.get("start_date") or "Unknown"
-                end_date = reservation.get("end_date") or "Unknown"
-                st.markdown(f"**Start:** {start_date}")
-                st.markdown(f"**End:** {end_date}")
-                status = reservation.get("status") or "Pending"
-                st.markdown(f"**Status:** {status}")
-                st.caption("Reservation metadata")
-                st.json(reservation)
+        st.subheader("Requests for Your Tools")
+        owned_tools = st.session_state.get("user_tools", [])
+        owned_tool_ids = [tool.get("id") for tool in owned_tools if tool.get("id")]
+        if not owned_tool_ids:
+            st.info("You haven't posted any tools yet, so there are no incoming requests.")
+        else:
+            if st.button("Refresh Incoming Requests", key="refresh_owner_requests"):
+                st.session_state["owner_reservations_cache"] = None
+
+            owner_cache = st.session_state.get("owner_reservations_cache")
+            if owner_cache is None:
+                data, error = _fetch_owner_reservations(user_id)
+                st.session_state["owner_reservations_cache"] = {
+                    "data": data or [],
+                    "error": error,
+                }
+                owner_cache = st.session_state["owner_reservations_cache"]
+
+            if owner_cache.get("error"):
+                st.warning(f"Unable to load requests: {owner_cache['error']}")
+            else:
+                requests_data = owner_cache.get("data", [])
+                if not requests_data:
+                    st.info("No reservation requests for your tools yet.")
+                else:
+                    for idx, reservation in enumerate(requests_data, start=1):
+                        tool_name = reservation.get("tool_name") or reservation.get("tool_id") or "Unknown tool"
+                        borrower_label = reservation.get("borrower_email") or reservation.get("borrower_id") or "Unknown borrower"
+                        with st.expander(f"Request {idx}: {tool_name}", expanded=False):
+                            st.markdown(f"**Borrower:** {borrower_label}")
+                            start_date_val = reservation.get("start_date") or "Unknown"
+                            end_date_val = reservation.get("end_date") or "Unknown"
+                            st.markdown(f"**Start:** {start_date_val}")
+                            st.markdown(f"**End:** {end_date_val}")
+                            status = reservation.get("status") or "Pending"
+                            st.markdown(f"**Status:** {status}")
+                            st.caption("Reservation metadata")
+                            st.json(reservation)
     reservations()
 
 with tab4:
@@ -426,6 +491,7 @@ with tab4:
             else:
                 st.success(f"'{tool_name}' posted successfully!")
                 st.session_state["reset_tool_form"] = True
+                st.session_state["owner_reservations_cache"] = None
                 _refresh_user_tools(owner_id)
                 st.rerun()
 
@@ -477,6 +543,7 @@ with tab4:
                     else:
                         st.success("Tool removed from profile.")
                         _refresh_user_tools(owner_id)
+                        st.session_state["owner_reservations_cache"] = None
     else:
         if owner_id:
             st.info("You haven't posted any tools yet!")
