@@ -2,11 +2,15 @@ import streamlit as st
 from supabase import create_client, Client
 from typing import Any, cast, Optional
 
+DEFAULT_REDIRECT_URL = "https://geargrid.streamlit.app"
+
+
 @st.cache_resource
 def init_connection() -> Client:
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
+
 
 supabase: Client = init_connection()
 _auth = cast(Any, supabase.auth)
@@ -18,7 +22,7 @@ def _err(message: str, code: Optional[str] = None):
     return {"data": None, "error": {"message": message, "code": code}}
 
 def sign_in_with_oauth(provider: str, redirect_to: Optional[str] = None, flow_type: str = "pkce"):
-    options = {"flow_type": flow_type}
+    options = {"flow_type": flow_type, "redirect_to": DEFAULT_REDIRECT_URL}
     if redirect_to:
         options["redirect_to"] = redirect_to
     res = _auth.sign_in_with_oauth({"provider": provider, "options": options})
@@ -68,6 +72,7 @@ def sign_up_traditional(email: str, phone: str, password: str, first_name: str, 
         "email": email,
         "password": password,
         "options": {
+            "email_redirect_to": DEFAULT_REDIRECT_URL,
             "data": {
                 "first_name": first_name,
                 "last_name": last_name,
