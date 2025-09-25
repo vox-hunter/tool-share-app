@@ -73,13 +73,25 @@ def _delete_tool(owner_id: str | None, tool_id):
     if not owner_id:
         return "Please sign in before deleting a tool."
     reservations, res_error = _execute_supabase(
-        lambda: backend_K.supabase.table("reservations").select("id").eq("tool_id", tool_id).limit(1),
+        lambda: backend_K.supabase.table("reservations").select("id,status").eq("tool_id", tool_id),
         default=[],
     )
     if res_error:
         return f"Unable to verify reservations for this tool: {res_error}"
     if reservations:
-        return "This tool still has reservation records. Please cancel them before deleting the tool."
+        removable_statuses = {"declined", "cancelled", "cancelled_by_borrower", "completed"}
+        blocking = [
+            r for r in reservations
+            if (r.get("status") or "").lower() not in removable_statuses
+        ]
+        if blocking:
+            return "This tool has active reservations. Please resolve or cancel them before deleting the tool."
+        _, delete_res_error = _execute_supabase(
+            lambda: backend_K.supabase.table("reservations").delete().eq("tool_id", tool_id),
+            default=[],
+        )
+        if delete_res_error:
+            return f"Unable to remove completed reservations: {delete_res_error}"
     _, error = _execute_supabase(
         lambda: backend_K.supabase.table("tools").delete().eq("id", tool_id).eq("owner_id", owner_id),
         default=[],
