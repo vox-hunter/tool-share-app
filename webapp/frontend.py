@@ -21,6 +21,7 @@ TOOL_TYPE_OPTIONS = ["Hand Tool", "Power Tool", "Pneumatic Tool", "Other"]
 
 def _execute_supabase(builder, default=None):
     """Execute a Supabase query builder, returning (data, error_message)."""
+
     try:
         response = builder().execute()
     except Exception as exc:  # pragma: no cover - defensive guard for network errors
@@ -71,6 +72,14 @@ def _add_tool(owner_id: str | None, name: str, desc: str, tool_type: str):
 def _delete_tool(owner_id: str | None, tool_id):
     if not owner_id:
         return "Please sign in before deleting a tool."
+    reservations, res_error = _execute_supabase(
+        lambda: backend_K.supabase.table("reservations").select("id").eq("tool_id", tool_id).limit(1),
+        default=[],
+    )
+    if res_error:
+        return f"Unable to verify reservations for this tool: {res_error}"
+    if reservations:
+        return "This tool still has reservation records. Please cancel them before deleting the tool."
     _, error = _execute_supabase(
         lambda: backend_K.supabase.table("tools").delete().eq("id", tool_id).eq("owner_id", owner_id),
         default=[],
@@ -117,6 +126,29 @@ def _fetch_owner_reservations(owner_id: str | None):
         lambda: backend_K.supabase.table("reservations").select("*").in_("tool_id", tool_ids).order("start_date", desc=True),
         default=[],
     )
+
+
+def _cancel_reservation(reservation_id: str | None, borrower_id: str | None):
+    if not reservation_id or not borrower_id:
+        return "Missing reservation or borrower information."
+    _, error = _execute_supabase(
+        lambda: backend_K.supabase.table("reservations").update({"status": "cancelled_by_borrower"}).eq("id", reservation_id).eq("borrower_id", borrower_id),
+        default=[],
+    )
+    return error
+
+
+def _owner_update_reservation(reservation_id: str | None, tool_id: str | None, status: str):
+    if not reservation_id or not tool_id:
+        return "Missing reservation or tool information."
+    owned_ids = {tool.get("id") for tool in st.session_state.get("user_tools", []) if tool.get("id")}
+    if tool_id not in owned_ids:
+        return "You can only update reservations for your own tools."
+    _, error = _execute_supabase(
+        lambda: backend_K.supabase.table("reservations").update({"status": status}).eq("id", reservation_id).eq("tool_id", tool_id),
+        default=[],
+    )
+    return error
 
 
 def _create_reservation(tool_id: str, borrower_id: str, tool_name: str, start_date: date, end_date: date, notes: str | None = None):
@@ -421,10 +453,26 @@ with tab3:
                     end_date_val = reservation.get("end_date") or "Unknown"
                     st.markdown(f"**Start:** {start_date_val}")
                     st.markdown(f"**End:** {end_date_val}")
-                    status = reservation.get("status") or "Pending"
-                    st.markdown(f"**Status:** {status}")
+                    status_raw = reservation.get("status") or "Pending"
+                    status_lower = status_raw.lower()
+                    st.markdown(f"**Status:** {status_raw.title()}")
                     st.caption("Reservation metadata")
                     st.json(reservation)
+
+                    res_id = reservation.get("id")
+                    if res_id and status_lower not in {"cancelled", "cancelled_by_borrower", "declined"}:
+                        if st.button("Cancel Reservation", key=f"cancel_res_{res_id}"):
+                            error = _cancel_reservation(res_id, user_id)
+                            if error:
+                                st.error(f"Unable to cancel: {error}")
+                            else:
+                                st.session_state["reservation_flash"] = {
+                                    "type": "info",
+                                    "message": "Reservation cancelled.",
+                                }
+                                st.session_state["reservations_cache"] = None
+                                st.session_state["owner_reservations_cache"] = None
+                                st.rerun()
 
         st.subheader("Requests for Your Tools")
         owned_tools = st.session_state.get("user_tools", [])
@@ -460,10 +508,41 @@ with tab3:
                             end_date_val = reservation.get("end_date") or "Unknown"
                             st.markdown(f"**Start:** {start_date_val}")
                             st.markdown(f"**End:** {end_date_val}")
-                            status = reservation.get("status") or "Pending"
-                            st.markdown(f"**Status:** {status}")
+                            status_raw = reservation.get("status") or "Pending"
+                            status_lower = status_raw.lower()
+                            st.markdown(f"**Status:** {status_raw.title()}")
                             st.caption("Reservation metadata")
                             st.json(reservation)
+                            res_id = reservation.get("id")
+                            tool_id = reservation.get("tool_id")
+                            if res_id and status_lower in {"requested", "pending"}:
+                                action_cols = st.columns(2)
+                                with action_cols[0]:
+                                    if st.button("Accept", key=f"accept_res_{res_id}"):
+                                        error = _owner_update_reservation(res_id, tool_id, "accepted")
+                                        if error:
+                                            st.error(f"Unable to accept: {error}")
+                                        else:
+                                            st.session_state["reservation_flash"] = {
+                                                "type": "success",
+                                                "message": "Reservation accepted.",
+                                            }
+                                            st.session_state["owner_reservations_cache"] = None
+                                            st.session_state["reservations_cache"] = None
+                                            st.rerun()
+                                with action_cols[1]:
+                                    if st.button("Decline", key=f"decline_res_{res_id}"):
+                                        error = _owner_update_reservation(res_id, tool_id, "declined")
+                                        if error:
+                                            st.error(f"Unable to decline: {error}")
+                                        else:
+                                            st.session_state["reservation_flash"] = {
+                                                "type": "warning",
+                                                "message": "Reservation declined.",
+                                            }
+                                            st.session_state["owner_reservations_cache"] = None
+                                            st.session_state["reservations_cache"] = None
+                                            st.rerun()
     reservations()
 
 with tab4:
