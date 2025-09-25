@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 import streamlit as st
 
 import backend_K
@@ -14,11 +16,139 @@ def _run_supabase_health_check():
         return {"ok": False, "message": str(exc)}
 
 
+TOOL_TYPE_OPTIONS = ["Hand Tool", "Power Tool", "Pneumatic Tool", "Other"]
+
+
+def _execute_supabase(builder, default=None):
+    """Execute a Supabase query builder, returning (data, error_message)."""
+    try:
+        response = builder().execute()
+    except Exception as exc:  # pragma: no cover - defensive guard for network errors
+        return default, str(exc)
+    data = getattr(response, "data", None)
+    error = getattr(response, "error", None)
+    if error:
+        message = getattr(error, "message", None) if hasattr(error, "message") else None
+        code = getattr(error, "code", None) if hasattr(error, "code") else None
+        if isinstance(error, dict):
+            message = error.get("message") or message
+            code = error.get("code") or code
+        if code == "PGRST205":
+            message = "Supabase table not found. Ensure the required tables (e.g., 'tools', 'reservations') exist."  # noqa: E501
+        if not message:
+            message = str(error)
+        return default, message
+    if isinstance(data, list):
+        return data, None
+    return data if data is not None else default, None
+
+
+def _refresh_user_tools(user_id: str | None):
+    if not user_id:
+        st.session_state["user_tools"] = []
+        return None
+    data, error = _execute_supabase(
+        lambda: backend_K.supabase.table("tools").select("*").eq("owner_id", user_id).order("created_at", desc=True),
+        default=[],
+    )
+    st.session_state["user_tools"] = data or []
+    return error
+
+
+def _add_tool(owner_id: str | None, name: str, desc: str, tool_type: str):
+    if not owner_id:
+        return "Please sign in before posting a tool."
+    payload = {
+        "owner_id": owner_id,
+        "name": name,
+        "description": desc,
+        "tool_type": tool_type,
+    }
+    _, error = _execute_supabase(lambda: backend_K.supabase.table("tools").insert(payload), default=[])
+    return error
+
+
+def _delete_tool(owner_id: str | None, tool_id):
+    if not owner_id:
+        return "Please sign in before deleting a tool."
+    _, error = _execute_supabase(
+        lambda: backend_K.supabase.table("tools").delete().eq("id", tool_id).eq("owner_id", owner_id),
+        default=[],
+    )
+    return error
+
+
+def _search_tools(name: str | None, tool_type: str | None):
+    def builder():
+        query = backend_K.supabase.table("tools").select("*").order("created_at", desc=True)
+        if name:
+            query = query.ilike("name", f"%{name}%")
+        if tool_type and tool_type != "All":
+            query = query.eq("tool_type", tool_type)
+        return query
+
+    return _execute_supabase(builder, default=[])
+
+
+def _fetch_available_tools(limit: int = 20):
+    return _execute_supabase(
+        lambda: backend_K.supabase.table("tools").select("*").order("created_at", desc=True).limit(limit),
+        default=[],
+    )
+
+
+def _fetch_user_reservations(user_id: str | None):
+    if not user_id:
+        return [], "Please sign in to view reservations."
+    return _execute_supabase(
+        lambda: backend_K.supabase.table("reservations").select("*").eq("borrower_id", user_id).order("start_date", desc=True),
+        default=[],
+    )
+
+
+def _create_reservation(tool_id: str, borrower_id: str, tool_name: str, start_date: date, end_date: date, notes: str | None = None):
+    payload = {
+        "tool_id": tool_id,
+        "borrower_id": borrower_id,
+        "tool_name": tool_name,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "status": "requested",
+    }
+    if notes:
+        payload["notes"] = notes
+    _, error = _execute_supabase(lambda: backend_K.supabase.table("reservations").insert(payload), default=[])
+    return error
+
+
 if "supabase_health" not in st.session_state:
     st.session_state["supabase_health"] = _run_supabase_health_check()
 
 if "current_user" not in st.session_state:
     st.session_state["current_user"] = None
+
+if "user_tools" not in st.session_state:
+    st.session_state["user_tools"] = []
+
+st.session_state.setdefault("reservations_cache", None)
+st.session_state.setdefault("search_results", [])
+st.session_state.setdefault("search_error", None)
+st.session_state.setdefault("search_submitted", False)
+st.session_state.setdefault("new_tool_name", "")
+st.session_state.setdefault("new_tool_desc", "")
+st.session_state.setdefault("new_tool_type", TOOL_TYPE_OPTIONS[0])
+st.session_state.setdefault("selected_tool", None)
+today = date.today()
+st.session_state.setdefault("reservation_start_date", today)
+st.session_state.setdefault("reservation_end_date", today + timedelta(days=3))
+st.session_state.setdefault("reservation_notes", "")
+st.session_state.setdefault("reset_tool_form", False)
+
+if st.session_state.get("reset_tool_form"):
+    st.session_state["new_tool_name"] = ""
+    st.session_state["new_tool_desc"] = ""
+    st.session_state["new_tool_type"] = TOOL_TYPE_OPTIONS[0]
+    st.session_state["reset_tool_form"] = False
 
 st.set_page_config(
     page_title="GearGrid-Tool Share",
@@ -66,10 +196,19 @@ with tab2:
                         user_email = getattr(user, "email", None) or (
                             user.get("email") if isinstance(user, dict) else None
                         )
+                        user_id = getattr(user, "id", None) or (
+                            user.get("id") if isinstance(user, dict) else None
+                        )
                         st.session_state["current_user"] = {
                             "email": user_email,
+                            "id": user_id,
                             "session": session,
                         }
+                        st.session_state["user_tools"] = []
+                        st.session_state["reservations_cache"] = None
+                        st.session_state["search_results"] = []
+                        st.session_state["search_error"] = None
+                        st.session_state["search_submitted"] = False
                         st.session_state["supabase_health"] = _run_supabase_health_check()
                         st.success(f"Logged in as {user_email or 'current user'}")
                 except Exception as exc:  # pragma: no cover - network/auth failure guard
@@ -83,6 +222,11 @@ with tab2:
                     st.error(res["error"]["message"])
                 else:
                     st.session_state["current_user"] = None
+                    st.session_state["user_tools"] = []
+                    st.session_state["reservations_cache"] = None
+                    st.session_state["search_results"] = []
+                    st.session_state["search_error"] = None
+                    st.session_state["search_submitted"] = False
                     st.session_state["supabase_health"] = _run_supabase_health_check()
                     st.success("Signed out successfully.")
 
@@ -127,44 +271,163 @@ with tab2:
 with tab3:
     def reservations():
         st.header("Your Reservations")
-        # Placeholder: Fetch user reservations from Supabase
-        st.info("No reservations yet.")
-    reservations()
+        current_user = st.session_state.get("current_user") or {}
+        user_id = current_user.get("id")
+        if not user_id:
+            st.info("Sign in to view and manage reservations.")
+            return
 
-if "user_tools" not in st.session_state:
-    st.session_state.user_tools = []
+        st.subheader("Reserve a Tool")
+        available_tools, avail_error = _fetch_available_tools(limit=25)
+        if avail_error:
+            st.warning(f"Unable to load tools for reservation: {avail_error}")
+        else:
+            tool_choices = [tool for tool in (available_tools or []) if tool.get("owner_id") != user_id]
+            if not tool_choices:
+                st.info("No tools available to reserve right now. Check back soon!")
+            else:
+                selected_tool = st.session_state.get("selected_tool")
+                default_index = 0
+                for idx, tool in enumerate(tool_choices):
+                    if selected_tool and tool.get("id") == selected_tool.get("id"):
+                        default_index = idx
+                        break
+
+                tool_index = st.selectbox(
+                    "Choose a tool",
+                    options=list(range(len(tool_choices))),
+                    index=default_index,
+                    format_func=lambda idx: f"{tool_choices[idx].get('name', 'Unnamed Tool')} ({tool_choices[idx].get('tool_type', 'Unknown')})",
+                )
+                chosen_tool = tool_choices[tool_index]
+                st.session_state["selected_tool"] = chosen_tool
+
+                start_date = st.date_input(
+                    "Start date",
+                    key="reservation_start_date",
+                    value=st.session_state.get("reservation_start_date", date.today()),
+                )
+                end_date = st.date_input(
+                    "End date",
+                    key="reservation_end_date",
+                    value=st.session_state.get("reservation_end_date", date.today() + timedelta(days=3)),
+                )
+                notes = st.text_area("Notes (optional)", key="reservation_notes")
+
+                if st.button("Reserve Tool", key="reserve_tool_button"):
+                    if start_date > end_date:
+                        st.warning("End date must be on or after the start date.")
+                    else:
+                        tool_id = chosen_tool.get("id")
+                        tool_name = chosen_tool.get("name", "Unnamed Tool")
+                        error = _create_reservation(
+                            tool_id=tool_id,
+                            borrower_id=user_id,
+                            tool_name=tool_name,
+                            start_date=start_date,
+                            end_date=end_date,
+                            notes=notes.strip() or None,
+                        )
+                        if error:
+                            st.error(f"Unable to create reservation: {error}")
+                        else:
+                            st.success(f"Reservation requested for {tool_name}.")
+                            st.session_state["reservations_cache"] = None
+                            st.session_state["selected_tool"] = None
+                            st.session_state["reservation_notes"] = ""
+                            st.session_state["reservation_start_date"] = date.today()
+                            st.session_state["reservation_end_date"] = date.today() + timedelta(days=3)
+
+        st.divider()
+
+        if st.button("Refresh Reservations", key="refresh_reservations"):
+            st.session_state["reservations_cache"] = None
+
+        cached = st.session_state.get("reservations_cache")
+        if cached is None:
+            data, error = _fetch_user_reservations(user_id)
+            st.session_state["reservations_cache"] = {
+                "data": data or [],
+                "error": error,
+            }
+            cached = st.session_state["reservations_cache"]
+
+        if cached.get("error"):
+            st.warning(f"Unable to load reservations: {cached['error']}")
+            return
+
+        reservations_data = cached.get("data", [])
+        if not reservations_data:
+            st.info("No reservations yet.")
+            return
+
+        for idx, reservation in enumerate(reservations_data, start=1):
+            with st.expander(f"Reservation {idx}", expanded=False):
+                tool_name = reservation.get("tool_name") or reservation.get("tool_id") or "Unknown tool"
+                st.markdown(f"**Tool:** {tool_name}")
+                st.markdown(f"**Borrower:** {current_user.get('email', 'You')}")
+                start_date = reservation.get("start_date") or "Unknown"
+                end_date = reservation.get("end_date") or "Unknown"
+                st.markdown(f"**Start:** {start_date}")
+                st.markdown(f"**End:** {end_date}")
+                status = reservation.get("status") or "Pending"
+                st.markdown(f"**Status:** {status}")
+                st.caption("Reservation metadata")
+                st.json(reservation)
+    reservations()
 
 with tab4:
 
     # Post a New Tool
     st.subheader("Post a New Tool")
+    current_user = st.session_state.get("current_user") or {}
+    owner_id = current_user.get("id")
+    if not owner_id:
+        st.info("Sign in to add and manage your tools.")
+
     tool_name = st.text_input("Name", key="new_tool_name")
     tool_desc = st.text_area("Description", key="new_tool_desc")
+    tool_type_choice = st.selectbox("Tool Type", TOOL_TYPE_OPTIONS, key="new_tool_type")
 
     if st.button("Add Tool to Profile"):
-        if tool_name:
-            st.session_state.user_tools.append({
-                "name": tool_name,
-                "desc": tool_desc
-            })
-            # TODO: Add to Supabase
-            st.success(f"'{tool_name}' posted successfully!")
-        else:
+        if not owner_id:
+            st.warning("Please sign in before posting a tool.")
+        elif not tool_name.strip():
             st.warning("Please enter a tool name!")
+        else:
+            error = _add_tool(owner_id, tool_name.strip(), tool_desc.strip(), tool_type_choice)
+            if error:
+                st.error(f"Unable to add tool: {error}")
+            else:
+                st.success(f"'{tool_name}' posted successfully!")
+                st.session_state["reset_tool_form"] = True
+                _refresh_user_tools(owner_id)
+                st.rerun()
 
     st.markdown("---")
 
     # --- Display Tools in Grid Cards ---
     st.subheader("Your Profile")
 
-    tools = st.session_state.user_tools
+    refresh_error = None
+    if owner_id:
+        refresh_error = _refresh_user_tools(owner_id)
+    else:
+        st.session_state["user_tools"] = []
+
+    if refresh_error:
+        st.warning(f"Unable to load your tools: {refresh_error}")
+
+    tools = st.session_state.get("user_tools", [])
 
     if tools:
-        # Display 2 tools per row
         cols = st.columns(2)
         for idx, tool in enumerate(tools):
-            col = cols[idx % 2] #Ensures two columns displayed
+            col = cols[idx % 2]
             with col:
+                tool_name_display = tool.get("name", "Unnamed Tool")
+                tool_desc_display = tool.get("description") or tool.get("desc") or "No description provided."
+                tool_type_display = tool.get("tool_type", "Unknown")
                 st.markdown(
                     f"""
                     <div style='
@@ -174,17 +437,26 @@ with tab4:
                         border-radius:10px;
                         box-shadow: 0 2px 5px rgba(0,0,0,0.1);
                     '>
-                        <h4 style='margin:0'>{tool['name']}</h4>
-                        <p>{tool['desc']}</p>
+                        <h4 style='margin:0'>{tool_name_display}</h4>
+                        <p style='margin:0 0 8px 0;'>{tool_desc_display}</p>
+                        <span style='font-size:12px;color:#555;'>Type: {tool_type_display}</span>
                     </div>
                     """,
                     unsafe_allow_html=True
                 )
-                # Delete button
-                if st.button("Delete", key=f"del_{idx}"):
-                    st.session_state.user_tools.pop(idx)
+                tool_id = tool.get("id", idx)
+                if st.button("Delete", key=f"del_{tool_id}"):
+                    error = _delete_tool(owner_id, tool_id)
+                    if error:
+                        st.error(f"Unable to delete tool: {error}")
+                    else:
+                        st.success("Tool removed from profile.")
+                        _refresh_user_tools(owner_id)
     else:
-        st.info("You haven't posted any tools yet!")
+        if owner_id:
+            st.info("You haven't posted any tools yet!")
+        else:
+            st.info("Sign in to view stored tools.")
 
 # Supabase health + Tool Search Sidebar
 sidebar_status = st.session_state.get("supabase_health", {"ok": False, "message": "Unknown"})
@@ -203,14 +475,63 @@ else:
     st.sidebar.caption("Not signed in")
 
 st.sidebar.header("Tool Search")
-tool_name = st.sidebar.text_input("Name")
-tool_type = st.sidebar.selectbox("Tool Type", ["Hand Tool", "Power Tool", "Pneumatic Tool"])
-submit = st.sidebar.button("Submit")
+search_name = st.sidebar.text_input("Name", key="search_name")
+search_type = st.sidebar.selectbox("Tool Type", ["All"] + TOOL_TYPE_OPTIONS, index=0, key="search_type")
+if st.sidebar.button("Submit", key="search_submit"):
+    filters_name = search_name.strip() or None
+    selected_type = search_type if search_type != "All" else None
+    results, error = _search_tools(filters_name, selected_type)
+    st.session_state["search_results"] = results or []
+    st.session_state["search_error"] = error
+    st.session_state["search_submitted"] = True
+
+search_error = st.session_state.get("search_error")
+search_results = st.session_state.get("search_results", [])
+search_submitted = st.session_state.get("search_submitted", False)
+
+if search_error:
+    st.sidebar.error(f"Search failed: {search_error}")
+elif search_submitted:
+    if search_results:
+        st.sidebar.success(f"Found {len(search_results)} matching tool(s).")
+        for tool in search_results[:10]:
+            name = tool.get("name", "Unnamed Tool")
+            tool_type_label = tool.get("tool_type", "Unknown")
+            st.sidebar.markdown(f"**{name}** — {tool_type_label}")
+            description = tool.get("description") or tool.get("desc")
+            if description:
+                preview = (description[:80] + "…") if len(description) > 80 else description
+                st.sidebar.caption(preview)
+    else:
+        st.sidebar.info("No tools match the current filters.")
+
 
 # Browse Tools Sidebar
 def browse_tools():
     st.sidebar.header("Browse Available Tools")
-    # Placeholder: Fetch and display tools from Supabase
-    st.sidebar.info("Tool browsing feature coming soon.")
+    tools, error = _fetch_available_tools(limit=10)
+    if error:
+        st.sidebar.error(f"Unable to load tools: {error}")
+        return
+    if not tools:
+        st.sidebar.info("No tools available right now. Check back soon!")
+        return
+    for tool in tools:
+        name = tool.get("name", "Unnamed Tool")
+        tool_type_label = tool.get("tool_type", "Unknown")
+        st.sidebar.markdown(f"**{name}** — {tool_type_label}")
+        description = tool.get("description") or tool.get("desc")
+        if description:
+            preview = (description[:75] + "…") if len(description) > 75 else description
+            st.sidebar.caption(preview)
+        tool_id = tool.get("id") or name
+        if st.sidebar.button("Reserve", key=f"sidebar_reserve_{tool_id}"):
+            st.session_state["selected_tool"] = tool
+            st.session_state["reservation_start_date"] = date.today()
+            st.session_state["reservation_end_date"] = date.today() + timedelta(days=3)
+            st.session_state["reservation_notes"] = ""
+            st.sidebar.info("Selected for reservation. Complete the request on the Reservations tab.")
+
+
 browse_tools()
 
