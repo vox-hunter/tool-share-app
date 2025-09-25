@@ -77,18 +77,25 @@ def sign_up_traditional(email: str, phone: str, password: str, first_name: str, 
                 "first_name": first_name,
                 "last_name": last_name,
                 "age": age_int,
+                "phone": phone,
             }
         }
     })
-    # Attach phone to current session user to trigger SMS verification
-    phone_otp_sent = True
-    _auth.update_user({"phone": phone})
+    # Attach phone to current session user to trigger SMS verification when possible
+    phone_otp_sent = False
+    session = getattr(res, "session", None)
+    if session:
+        try:
+            _auth.update_user({"phone": phone})
+            phone_otp_sent = True
+        except Exception:  # pragma: no cover - Supabase may require verified session
+            phone_otp_sent = False
     return _ok({
         "user": getattr(res, "user", None),
         "session": getattr(res, "session", None),
         "next_steps": {
             "verify_email": True,
-            "verify_phone": phone_otp_sent or True,
+            "verify_phone": phone_otp_sent or False,
         }
     })
 

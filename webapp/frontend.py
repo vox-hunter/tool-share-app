@@ -143,12 +143,21 @@ st.session_state.setdefault("reservation_start_date", today)
 st.session_state.setdefault("reservation_end_date", today + timedelta(days=3))
 st.session_state.setdefault("reservation_notes", "")
 st.session_state.setdefault("reset_tool_form", False)
+st.session_state.setdefault("reset_reservation_form", False)
+st.session_state.setdefault("reservation_flash", None)
 
 if st.session_state.get("reset_tool_form"):
     st.session_state["new_tool_name"] = ""
     st.session_state["new_tool_desc"] = ""
     st.session_state["new_tool_type"] = TOOL_TYPE_OPTIONS[0]
     st.session_state["reset_tool_form"] = False
+
+if st.session_state.get("reset_reservation_form"):
+    today_now = date.today()
+    st.session_state["reservation_start_date"] = today_now
+    st.session_state["reservation_end_date"] = today_now + timedelta(days=3)
+    st.session_state["reservation_notes"] = ""
+    st.session_state["reset_reservation_form"] = False
 
 st.set_page_config(
     page_title="GearGrid-Tool Share",
@@ -277,6 +286,20 @@ with tab3:
             st.info("Sign in to view and manage reservations.")
             return
 
+        flash = st.session_state.get("reservation_flash")
+        if isinstance(flash, dict) and flash.get("message"):
+            message = flash.get("message")
+            level = flash.get("type", "info")
+            if level == "success":
+                st.success(message)
+            elif level == "warning":
+                st.warning(message)
+            elif level == "error":
+                st.error(message)
+            else:
+                st.info(message)
+            st.session_state["reservation_flash"] = None
+
         st.subheader("Reserve a Tool")
         available_tools, avail_error = _fetch_available_tools(limit=25)
         if avail_error:
@@ -331,12 +354,14 @@ with tab3:
                         if error:
                             st.error(f"Unable to create reservation: {error}")
                         else:
-                            st.success(f"Reservation requested for {tool_name}.")
                             st.session_state["reservations_cache"] = None
                             st.session_state["selected_tool"] = None
-                            st.session_state["reservation_notes"] = ""
-                            st.session_state["reservation_start_date"] = date.today()
-                            st.session_state["reservation_end_date"] = date.today() + timedelta(days=3)
+                            st.session_state["reservation_flash"] = {
+                                "type": "success",
+                                "message": f"Reservation requested for {tool_name}.",
+                            }
+                            st.session_state["reset_reservation_form"] = True
+                            st.rerun()
 
         st.divider()
 
@@ -527,10 +552,12 @@ def browse_tools():
         tool_id = tool.get("id") or name
         if st.sidebar.button("Reserve", key=f"sidebar_reserve_{tool_id}"):
             st.session_state["selected_tool"] = tool
-            st.session_state["reservation_start_date"] = date.today()
-            st.session_state["reservation_end_date"] = date.today() + timedelta(days=3)
-            st.session_state["reservation_notes"] = ""
-            st.sidebar.info("Selected for reservation. Complete the request on the Reservations tab.")
+            st.session_state["reservation_flash"] = {
+                "type": "info",
+                "message": f"'{name}' selected. Complete the request on the Reservations tab.",
+            }
+            st.session_state["reset_reservation_form"] = True
+            st.rerun()
 
 
 browse_tools()
